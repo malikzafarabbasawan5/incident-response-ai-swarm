@@ -1,0 +1,714 @@
+{
+  "name": "Project 27: Enterprise Autonomous Incident Response & Escalation Swarm",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -992,
+        -304
+      ],
+      "id": "9773e8b8-793c-4de4-b267-89983a284902",
+      "name": "When chat message received",
+      "webhookId": "cfc88022-cc05-4252-8fa3-d92ea83dcc13"
+    },
+    {
+      "parameters": {
+        "jsCode": "const incidentPayload = $input.first().json.chatInput || \"\";\nreturn [{\n  json: {\n    ticket_id: \"INC-\" + Math.floor(100000 + Math.random() * 900000),\n    timestamp: new Date().toISOString(),\n    raw_message: incidentPayload,\n    source_environment: \"Production-US-East\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -304
+      ],
+      "id": "bc9f58b2-a7df-4e9b-8ab1-ed6e0d964c5d",
+      "name": "Enrich Incident Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ticket ID: {{ $json.ticket_id }}\nEnvironment: {{ $json.source_environment }}\nRaw Incident Message: {{ $json.raw_message }}",
+        "options": {
+          "systemMessage": "You are an Enterprise Site Reliability and SecOps Incident Commander.\nClassify the incident strictly into one of three tiers:\n- \"P0_CRITICAL\": Database down, data leak, total system outage, payment gateway offline.\n- \"P1_HIGH\": Performance degradation, single high-value customer affected, feature bug.\n- \"P2_STANDARD\": How-to questions, minor UI bug, general inquiries.\n\nReturn strictly raw JSON (no backticks):\n{\n  \"severity\": \"P0_CRITICAL\" | \"P1_HIGH\" | \"P2_STANDARD\",\n  \"blast_radius\": \"string explaining impact\",\n  \"recommended_action\": \"string\"\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -528,
+        -304
+      ],
+      "id": "c8392fd5-661e-43f6-9a2c-d9141c38c621",
+      "name": "SLA Classifier Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        -96
+      ],
+      "id": "dc637db3-b470-4b95-bc9e-7e1a90ebbfac",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "KskgYheGpZvh6WAW",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ JSON.parse($json.output).severity }}",
+                    "rightValue": "P0_CRITICAL",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "263f0438-80ca-406a-86fa-859afefa15d4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "P0 Critical"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "24eab587-234e-480f-a19a-5990b3cf4759",
+                    "leftValue": "={{ JSON.parse($json.output).severity }}",
+                    "rightValue": "P1_HIGH",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "P1 High"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0c4551db-f94a-4f39-8982-c1445f6e0721",
+                    "leftValue": "={{ JSON.parse($json.output).severity }}",
+                    "rightValue": "P2_STANDARD",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Fallback / P2 Standard"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -176,
+        -320
+      ],
+      "id": "1c6f952b-0897-4618-a23d-f7d73c935122",
+      "name": "Route by Severity"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Incident Details: {{ $('Enrich Incident Context').item.json.raw_message }}\nTriage Analysis: {{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a Critical Incident Commander. Generate a rapid P0 executive containment plan with immediate mitigation steps and stakeholder notification drafts. Return clean raw JSON: {\"incident_plan\": \"string\", \"escalation_target\": \"CTO & VP Engineering\"}."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        368,
+        -720
+      ],
+      "id": "168f6678-d7e9-422c-9b81-95169b4d2523",
+      "name": "War Room Commander Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        -480
+      ],
+      "id": "64d8d5b7-4ef3-46cb-9b89-f6e03af1f5e4",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "KskgYheGpZvh6WAW",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Incident Details: {{ $('Enrich Incident Context').item.json.raw_message }}\nTriage Analysis: {{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a Senior Systems Operations Engineer. Provide a root-cause diagnosis strategy and standard SLA recovery path. Return clean raw JSON: {\"recovery_path\": \"string\", \"eta_minutes\": 30}."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        400,
+        -336
+      ],
+      "id": "bbafaec2-ec12-497f-be09-f69d386277e7",
+      "name": "Ops Recovery Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        -176
+      ],
+      "id": "74062bbd-3801-4447-a72b-2f2507c82775",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "KskgYheGpZvh6WAW",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Customer Query: {{ $('Enrich Incident Context').item.json.raw_message }}",
+        "options": {
+          "systemMessage": "You are an Autonomous Tier-1 Support Agent. Generate a polite, direct solution to resolve this routine query instantly. Return clean raw JSON: {\"customer_reply\": \"string\"}."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        416,
+        -48
+      ],
+      "id": "e1b08615-8093-42ba-8ffd-3342f653b0f3",
+      "name": "Auto Resolver Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        256,
+        144
+      ],
+      "id": "c99f4e15-8e1b-4295-b7ae-e29546687902",
+      "name": "Google Gemini Chat Model3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "KskgYheGpZvh6WAW",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "work.zafarabbas@gmail.com",
+        "subject": "🚨 [P0 EMERGENCY OUTAGE] Incident ID: {{ $('Enrich Incident Context').item.json.ticket_id }}",
+        "emailType": "text",
+        "message": "=CRITICAL INCIDENT DECLARED Ticket ID: {{ $('Enrich Incident Context').item.json.ticket_id }} Raw Telemetry: {{ $('Enrich Incident Context').item.json.raw_message }}  CONTAINMENT PLAN: {{ JSON.parse($json.output).incident_plan }}  ESCALATION TARGET: {{ JSON.parse($json.output).escalation_target }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        -736
+      ],
+      "id": "d6f49150-1464-4b08-a3c5-00226203bd27",
+      "name": "Dispatch P0 Executive Red Alert",
+      "webhookId": "a50bf220-06f9-465c-81aa-ceb9b05e114f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOJsfsIV1jaxrs7E",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1sr0ae9Xm76zcOH6AaQIRGTHLpXR1XYNPJ1viZmSXRc0/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1sr0ae9Xm76zcOH6AaQIRGTHLpXR1XYNPJ1viZmSXRc0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.format('YYYY-MM-DD HH:mm:ss') }}",
+            "Ticket_ID": "={{ $('Enrich Incident Context').item.json.ticket_id }}",
+            "Severity": "P0_CRITICAL",
+            "Incident_Plan": "={{ JSON.parse($json.output).incident_plan }}",
+            "Escalation_Target": "={{ JSON.parse($json.output).escalation_target }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket_ID",
+              "displayName": "Ticket_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Severity",
+              "displayName": "Severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Incident_Plan",
+              "displayName": "Incident_Plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Escalation_Target",
+              "displayName": "Escalation_Target",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        800,
+        -512
+      ],
+      "id": "3f9de30e-4ba1-4035-8c6b-ffb345f8992c",
+      "name": "Log P0 Critical War Room",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZWozehApm3jGgQww",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1gG7kPtYuL4FoCdg_gBnC4Q4TygRftuCNKPeeOG-lZKg/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1gG7kPtYuL4FoCdg_gBnC4Q4TygRftuCNKPeeOG-lZKg/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.format('YYYY-MM-DD HH:mm:ss') }}",
+            "Ticket_ID": "={{ $('Enrich Incident Context').item.json.ticket_id }}",
+            "Severity": "P1_HIGH",
+            "Recovery_Path": "={{ JSON.parse($json.output).recovery_path }}",
+            "ETA_Minutes": "={{ JSON.parse($json.output).eta_minutes }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket_ID",
+              "displayName": "Ticket_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Severity",
+              "displayName": "Severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Recovery_Path",
+              "displayName": "Recovery_Path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ETA_Minutes",
+              "displayName": "ETA_Minutes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        816,
+        -288
+      ],
+      "id": "f9b27800-0364-4eab-9460-5101ee401098",
+      "name": "Log P1 Ops Escalation",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZWozehApm3jGgQww",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1cpIRSFagzeZ1Lwjbl8rGn0OhupoyVq9cQwQvs3ElrLc/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cpIRSFagzeZ1Lwjbl8rGn0OhupoyVq9cQwQvs3ElrLc/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.format('YYYY-MM-DD HH:mm:ss') }}",
+            "Ticket_ID": "={{ $('Enrich Incident Context').item.json.ticket_id }}",
+            "Customer_Query": "={{ $('Enrich Incident Context').item.json.raw_message }}",
+            "Resolution_Sent": "={{ JSON.parse($json.output).customer_reply }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticket_ID",
+              "displayName": "Ticket_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Customer_Query",
+              "displayName": "Customer_Query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resolution_Sent",
+              "displayName": "Resolution_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        800,
+        32
+      ],
+      "id": "434c1f2e-eeaa-4e6a-bf43-5f27e2b675f8",
+      "name": "Archive Resolved Inquiry",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZWozehApm3jGgQww",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Enrich Incident Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Incident Context": {
+      "main": [
+        [
+          {
+            "node": "SLA Classifier Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "SLA Classifier Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SLA Classifier Agent": {
+      "main": [
+        [
+          {
+            "node": "Route by Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Severity": {
+      "main": [
+        [
+          {
+            "node": "War Room Commander Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ops Recovery Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auto Resolver Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "War Room Commander Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Ops Recovery Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Auto Resolver Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "War Room Commander Agent": {
+      "main": [
+        [
+          {
+            "node": "Dispatch P0 Executive Red Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log P0 Critical War Room",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ops Recovery Agent": {
+      "main": [
+        [
+          {
+            "node": "Log P1 Ops Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto Resolver Agent": {
+      "main": [
+        [
+          {
+            "node": "Archive Resolved Inquiry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f78eeaa3-1a6d-4fdf-8f71-04c486254e4c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fa2fd4966574db7289205074e7b81781b706d11259d5e83c66766e93f08e3704"
+  },
+  "nodeGroups": [],
+  "id": "vv73PPDcWTUocn4C",
+  "tags": []
+}
