@@ -3,7 +3,8 @@
 An automated incident management and triage system built with **n8n** and **Google Gemini Chat Models**.
 
 ## Architecture & Flow
-![Workflow Architecture](architecture.png)
+<img width="1663" height="902" alt="image" src="https://github.com/user-attachments/assets/1bbeba67-6191-4a90-a430-635272c52c5e" />
+
 
 1. **Trigger:** Incoming chat message / incident context.
 2. **Classification:** SLA Classifier Agent (Gemini) classifies severity.
